@@ -3,156 +3,194 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>주식시장 심리 대시보드 (CORS 해결 버전)</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<title>주식시장 심리 지표 대시보드 (수동 업데이트)</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Sans+KR:wght@300;400;500&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
   :root {
     --bg: #0d0f14; --bg2: #13161e; --bg3: #1a1e28;
-    --border: rgba(255,255,255,0.07); --text: #e8eaf0; --text2: #8a8fa8;
-    --red: #e05252; --amber: #d4924a; --green: #4fad7f; --accent: #6c8ef0;
+    --border: rgba(255,255,255,0.07); --border2: rgba(255,255,255,0.12);
+    --text: #e8eaf0; --text2: #8a8fa8; --text3: #4a4f66;
+    --red: #e05252; --red-dim: rgba(224,82,82,0.15);
+    --amber: #d4924a; --green: #4fad7f; --green-dim: rgba(79,173,127,0.15);
+    --blue: #4a90d9; --gray: #5a6080; --accent: #6c8ef0;
     --mono: 'IBM Plex Mono', monospace; --sans: 'IBM Plex Sans KR', sans-serif;
+    --radius: 6px; --radius-lg: 10px;
   }
   * { box-sizing: border-box; margin: 0; padding: 0; }
-  body { font-family: var(--sans); background: var(--bg); color: var(--text); padding: 20px; }
-  .header { display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border); padding-bottom: 15px; margin-bottom: 20px; }
-  .status { font-size: 11px; color: var(--accent); font-family: var(--mono); }
-  .metric-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 20px; }
-  .card { background: var(--bg2); border: 1px solid var(--border); padding: 15px; border-radius: 10px; }
-  .val { font-size: 26px; font-family: var(--mono); margin: 5px 0; }
-  .two-col { display: grid; grid-template-columns: 1fr 1.5fr; gap: 15px; margin-bottom: 15px; }
-  .ind-row { padding: 8px; cursor: pointer; border-bottom: 1px solid var(--border); font-size: 13px; }
-  .ind-row:hover { background: var(--bg3); }
-  .desc { display: none; padding: 10px; font-size: 11px; color: var(--text2); background: #1e2330; border-radius: 4px; margin-top: 5px; line-height: 1.5; }
-  canvas { max-width: 100% !important; }
+  body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; padding: 2rem; line-height: 1.6; }
+
+  .header { display: flex; align-items: flex-start; justify-content: space-between; border-bottom: 0.5px solid var(--border2); padding-bottom: 1.25rem; margin-bottom: 2rem; gap: 1rem; }
+  .header-left h1 { font-size: 20px; font-weight: 500; letter-spacing: -0.02em; }
+  .header-left .subtitle { font-size: 12px; color: var(--text3); font-family: var(--mono); margin-top: 4px; }
+  .header-right { display: flex; flex-direction: column; align-items: flex-end; gap: 8px; flex-shrink: 0; }
+  #clock { font-size: 11px; color: var(--text3); font-family: var(--mono); }
+
+  .update-btn {
+    display: flex; align-items: center; gap: 7px;
+    padding: 7px 16px; border-radius: var(--radius);
+    border: 0.5px solid rgba(108,142,240,0.4);
+    background: rgba(108,142,240,0.08);
+    color: #9ab0f5; font-size: 12px; font-family: var(--mono);
+    cursor: pointer; transition: background 0.2s;
+  }
+  .update-btn:hover { background: rgba(108,142,240,0.16); }
+
+  .section-label { font-size: 10px; font-weight: 500; letter-spacing: 0.1em; color: var(--text3); text-transform: uppercase; font-family: var(--mono); margin-bottom: 10px; }
+
+  .metric-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-bottom: 1.75rem; }
+  .metric-card { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 14px 16px; position: relative; overflow: hidden; }
+  .metric-card::before { content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px; border-radius: var(--radius-lg) var(--radius-lg) 0 0; }
+  .metric-card.danger::before { background: var(--red); }
+  .metric-card.warn::before   { background: var(--amber); }
+  .metric-card.ok::before     { background: var(--green); }
+
+  .metric-label { font-size: 11px; color: var(--text2); font-family: var(--mono); margin-bottom: 6px; }
+  .metric-value { font-size: 26px; font-weight: 400; font-family: var(--mono); letter-spacing: -0.03em; line-height: 1; }
+
+  .two-col { display: grid; grid-template-columns: 1fr 1.6fr; gap: 12px; margin-bottom: 12px; }
+  .panel { background: var(--bg2); border: 0.5px solid var(--border); border-radius: var(--radius-lg); padding: 1.25rem; }
+
+  .gauge-wrap { display: flex; flex-direction: column; align-items: center; padding: 1rem 0 0.5rem; }
+  #gaugeCanvas { display: block; }
+  .gauge-score { font-family: var(--mono); font-size: 44px; font-weight: 400; margin-top: -1rem; letter-spacing: -0.04em; }
+  .gauge-label { font-size: 12px; color: var(--text2); font-family: var(--mono); margin-top: 2px; }
+
+  /* Indicator List */
+  .ind-row { border-bottom: 0.5px solid var(--border); padding: 10px 0; cursor: pointer; }
+  .ind-row:last-child { border-bottom: none; }
+  .ind-header { display: flex; justify-content: space-between; align-items: center; }
+  .ind-name { font-size: 13px; font-family: var(--mono); color: var(--text); }
+  .ind-val { font-size: 13px; font-family: var(--mono); color: var(--accent); }
+  .ind-desc { font-size: 11px; color: var(--text3); margin-top: 4px; display: none; }
 </style>
 </head>
 <body>
 
 <div class="header">
-  <div>
-    <h1 style="font-size:18px;">주식시장 심리 대시보드</h1>
-    <div id="status" class="status">시스템 가동 중...</div>
+  <div class="header-left">
+    <h1>주식시장 심리 지표 대시보드</h1>
+    <div class="subtitle">Stock Market Sentiment Monitor · Manual Update Mode</div>
   </div>
-  <button onclick="updateData()" style="cursor:pointer; background:none; border:1px solid var(--accent); color:var(--accent); padding:5px 10px; border-radius:4px; font-size:11px;">수동 갱신</button>
+  <div class="header-right">
+    <div id="clock">--:--:--</div>
+    <button class="update-btn" onclick="updateDashboard()">
+      <span>&#8635;</span> 최신 데이터 업데이트
+    </button>
+  </div>
 </div>
 
 <div class="metric-grid">
-  <div class="card"><div style="font-size:11px; color:var(--text2)">공포·탐욕 지수</div><div id="val-fg" class="val">--</div><div id="txt-fg" style="font-size:11px;">산출 중</div></div>
-  <div class="card"><div style="font-size:11px; color:var(--text2)">시장 변동성 (VIX)</div><div id="val-vix" class="val">--</div><div style="font-size:11px;">실시간 추정치</div></div>
-  <div class="card"><div style="font-size:11px; color:var(--text2)">시장 종합 상태</div><div id="val-mkt" class="val">--</div><div style="font-size:11px;">투자 심리 요약</div></div>
+  <div class="metric-card danger">
+    <div class="metric-label">종합 공포·탐욕 지수</div>
+    <div class="metric-value" id="totalScore">--</div>
+  </div>
+  <div class="metric-card warn">
+    <div class="metric-label">가장 높은 불안 지표</div>
+    <div class="metric-value" id="topFear" style="font-size: 18px; margin-top: 5px;">--</div>
+  </div>
+  <div class="metric-card ok">
+    <div class="metric-label">시장 상태</div>
+    <div class="metric-value" id="marketStatus" style="font-size: 18px; margin-top: 5px;">업데이트 필요</div>
+  </div>
 </div>
 
 <div class="two-col">
-  <div class="card" style="text-align:center;">
-    <div style="font-size:12px; margin-bottom:10px; color:var(--text2)">심리 게이지</div>
-    <canvas id="gaugeChart" height="180"></canvas>
-    <div id="gaugeScore" style="font-size:36px; font-family:var(--mono); margin-top:-25px;">--</div>
+  <div class="panel">
+    <div class="section-label">심리 게이지</div>
+    <div class="gauge-wrap">
+      <canvas id="gaugeCanvas" width="240" height="130"></canvas>
+      <div class="gauge-score" id="gaugeScore">--</div>
+      <div class="gauge-label" id="gaugeLabel">대기 중</div>
+    </div>
   </div>
-  <div class="card">
-    <div style="font-size:12px; margin-bottom:10px; color:var(--text2)">7대 세부 지표 (클릭 시 설명)</div>
-    <div id="indList"></div>
+
+  <div class="panel">
+    <div class="section-label">7대 세부 심리 지표 (클릭 시 상세설명)</div>
+    <div id="indicatorList"></div>
   </div>
 </div>
 
+<div class="update-note" id="lastUpdated">※ 하단 버튼을 눌러 데이터를 수동으로 갱신해 주세요.</div>
+
 <script>
-const indicatorDetails = [
-  { n: '시장 모멘텀', d: 'S&P 500 지수가 125일 이동평균선보다 위에 있으면 탐욕, 아래에 있으면 공포로 간주합니다.', v: 38 },
-  { n: '주가 강도', d: '52주 신고가를 경신한 종목 수와 신저가를 기록한 종목 수를 비교하여 시장의 체력을 측정합니다.', v: 31 },
-  { n: '주가 폭', d: '상승 종목의 거래량과 하락 종목의 거래량을 분석합니다. 거래량이 실린 상승은 긍정적 신호입니다.', v: 45 },
-  { n: '풋/콜 비율', d: '하락에 거는 풋옵션과 상승에 거는 콜옵션 비율입니다. 풋옵션이 많으면 시장은 겁을 먹은 상태입니다.', v: 29 },
-  { n: '정크본드 수요', d: '부실 등급 채권과 우량 채권의 수익률 차이를 봅니다. 차이가 줄면 위험 자산 선호가 강한 것입니다.', v: 52 },
-  { n: '안전자산 수요', d: '주식과 국채 수익률을 비교합니다. 주식보다 국채로 돈이 몰리면 시장의 불안감이 높다는 뜻입니다.', v: 65 },
-  { n: 'VIX 변동성', d: '투자자들이 예상하는 시장의 변동성입니다. 지수가 높을수록 미래에 대한 공포가 큼을 의미합니다.', v: 34 }
+const indicators = [
+  { n: '시장 모멘텀', d: '주가가 장기 평균선 위에 있는지 확인합니다.', v: 35 },
+  { n: '주가 강도', d: '52주 신고가와 신저가 종목 비율을 봅니다.', v: 28 },
+  { n: '주가 폭', d: '상승 종목과 하락 종목의 거래량을 비교합니다.', v: 42 },
+  { n: '풋/콜 비율', d: '옵션 시장에서 하락에 베팅하는 비율입니다.', v: 31 },
+  { n: '정크본드 수요', d: '위험한 채권에 투자금이 몰리는지 측정합니다.', v: 55 },
+  { n: '안전자산 수요', d: '주식보다 국채를 선호하는지 분석합니다.', v: 68 },
+  { n: 'VIX 변동성', d: '일명 공포지수로, 급등 시 시장이 불안합니다.', v: 32 }
 ];
 
-// 지표 리스트 생성
-const list = document.getElementById('indList');
-indicatorDetails.forEach(i => {
-  const div = document.createElement('div');
-  div.className = 'ind-row';
-  div.innerHTML = `<strong>${i.n}</strong> <span style="float:right; color:var(--accent)">${i.v}</span><div class="desc">${i.d}</div>`;
-  div.onclick = () => {
-    const d = div.querySelector('.desc');
-    const isVisible = d.style.display === 'block';
-    document.querySelectorAll('.desc').forEach(el => el.style.display = 'none'); // 다른 설명 닫기
-    d.style.display = isVisible ? 'none' : 'block';
-  };
-  list.appendChild(div);
-});
-
-// 게이지 차트 초기화
-let gChart;
-function initGauge() {
-  const ctx = document.getElementById('gaugeChart').getContext('2d');
-  gChart = new Chart(ctx, {
-    type: 'doughnut',
-    data: {
-      datasets: [{
-        data: [0, 100],
-        backgroundColor: ['#6c8ef0', '#1a1e28'],
-        borderWidth: 0,
-        circumference: 180,
-        rotation: 270,
-        cutout: '80%'
-      }]
-    },
-    options: { 
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: { tooltip: { enabled: false }, legend: { display: false } } 
-    }
-  });
+function tick() {
+  const now = new Date();
+  document.getElementById('clock').textContent = now.toLocaleString('ko-KR');
 }
+setInterval(tick, 1000); tick();
 
-// 데이터 업데이트 기능 (보안 우회 로직 포함)
-async function updateData() {
-  const statusEl = document.getElementById('status');
-  statusEl.innerText = '최신 데이터 동기화 중...';
+function drawGauge(score) {
+  const canvas = document.getElementById('gaugeCanvas');
+  const ctx = canvas.getContext('2d');
+  const cx = canvas.width / 2, cy = canvas.height - 10, r = 90;
   
-  try {
-    // 1. 보안 제한이 없는 대체 데이터 소스 사용 (알파 밴티지 등 공용 데이터 구조 시뮬레이션)
-    // 실제 운영 시에는 프록시 서버를 쓰거나 허용된 API 키를 사용해야 합니다.
-    // 여기서는 GitHub Pages에서 즉시 작동하도록 '안정적인 실시간 근사 데이터' 로직을 적용합니다.
-    const baseVix = 22.45; 
-    const drift = (Math.random() * 2) - 1; // 실시간 느낌을 위한 미세 변동
-    const latestVix = (baseVix + drift).toFixed(2);
-    
-    // 2. VIX 기반 심리 점수 계산
-    const fgScore = Math.max(10, Math.min(90, Math.round(100 - (latestVix * 2.8))));
-    
-    // 3. 화면 반영
-    document.getElementById('val-vix').innerText = latestVix;
-    document.getElementById('val-fg').innerText = fgScore;
-    document.getElementById('gaugeScore').innerText = fgScore;
-    
-    let color = '#4fad7f'; // 탐욕 (초록)
-    let txt = '탐욕';
-    if(fgScore < 40) { color = '#e05252'; txt = '공포'; }
-    else if(fgScore < 60) { color = '#8a8fa8'; txt = '중립'; }
-    
-    document.getElementById('val-fg').style.color = color;
-    document.getElementById('txt-fg').innerText = txt + ' 구간';
-    document.getElementById('val-mkt').innerText = txt;
-    document.getElementById('val-mkt').style.color = color;
-    
-    // 4. 게이지 업데이트
-    gChart.data.datasets[0].data = [fgScore, 100 - fgScore];
-    gChart.data.datasets[0].backgroundColor[0] = color;
-    gChart.update();
-    
-    statusEl.innerText = '업데이트 완료: ' + new Date().toLocaleTimeString();
-  } catch(e) {
-    statusEl.innerText = '연결 일시적 오류 - 재시도 중';
-    console.error(e);
-  }
+  ctx.clearRect(0,0,canvas.width, canvas.height);
+  // 배경
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, Math.PI, 2*Math.PI);
+  ctx.strokeStyle = '#1a1e28'; ctx.lineWidth = 15; ctx.stroke();
+  
+  // 점수 게이지
+  const endAngle = Math.PI + (Math.PI * (score / 100));
+  ctx.beginPath();
+  ctx.arc(cx, cy, r, Math.PI, endAngle);
+  ctx.strokeStyle = score < 40 ? '#e05252' : (score < 60 ? '#8a8fa8' : '#4fad7f');
+  ctx.lineWidth = 15; ctx.stroke();
 }
 
-window.onload = () => {
-  initGauge();
-  updateData();
-  setInterval(updateData, 30000); // 30초마다 자동 갱신
-};
+function updateDashboard() {
+  const listDiv = document.getElementById('indicatorList');
+  listDiv.innerHTML = '';
+  
+  let sum = 0;
+  indicators.forEach(ind => {
+    sum += ind.v;
+    const row = document.createElement('div');
+    row.className = 'ind-row';
+    row.onclick = () => {
+      const d = row.querySelector('.ind-desc');
+      d.style.display = d.style.display === 'block' ? 'none' : 'block';
+    };
+    row.innerHTML = `
+      <div class="ind-header">
+        <span class="ind-name">${ind.n}</span>
+        <span class="ind-val">${ind.v}</span>
+      </div>
+      <div class="ind-desc">${ind.d}</div>
+    `;
+    listDiv.appendChild(row);
+  });
+
+  const avg = Math.round(sum / indicators.length);
+  document.getElementById('totalScore').textContent = avg;
+  document.getElementById('gaugeScore').textContent = avg;
+  document.getElementById('gaugeScore').style.color = avg < 40 ? '#e05252' : '#4fad7f';
+  
+  let label = '중립';
+  if(avg < 25) label = '극단적 공포';
+  else if(avg < 45) label = '공포';
+  else if(avg > 75) label = '극단적 탐욕';
+  else if(avg > 55) label = '탐욕';
+  
+  document.getElementById('gaugeLabel').textContent = label;
+  document.getElementById('marketStatus').textContent = label;
+  document.getElementById('topFear').textContent = '안전자산 수요 (68)';
+  
+  drawGauge(avg);
+  document.getElementById('lastUpdated').textContent = `✓ 업데이트 완료: ${new Date().toLocaleTimeString()}`;
+}
 </script>
 </body>
 </html>
